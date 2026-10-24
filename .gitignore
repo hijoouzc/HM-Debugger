@@ -1,0 +1,21 @@
+# Dữ liệu video lớn & nhị phân nặng (Bắt buộc ignore)
+*.y4m
+*.yuv
+!workspace/inputs/sample_64x64_1frame.yuv
+*.bin
+*.jpg
+*.png
+*.pdf
+HM-master/
+HEVC_reference_software/
+applecn/
+edabk-video-compression/
+workspace/outputs/
+
+# Build, cache & temporary files
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/
+scratch_fresh.cmd
+docs/

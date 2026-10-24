@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ./hm - Trình khởi chạy siêu tốc 1 lệnh cho HM-GDB-Inspector v2
+# ==============================================================================
+
+set -e
+
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+cd "$SCRIPT_DIR"
+
+if [ -f "HM-master/bin/TAppEncoderStaticd" ]; then
+    BINARY="HM-master/bin/TAppEncoderStaticd"
+else
+    BINARY="HEVC_reference_software/bin/TAppEncoderStaticd"
+fi
+CONFIG="workspace/configs/encoder_pilot_ctu64.cfg"
+
+if [ ! -f "$BINARY" ]; then
+    echo "[Lỗi] Không tìm thấy binary $BINARY. Hãy build nhị phân Debug trước!"
+    exit 1
+fi
+
+case "$1" in
+    test)
+        # Chạy toàn bộ 12 bài kiểm thử tự động
+        echo ">>> Đang chạy bộ kiểm thử toàn diện verify_all.py..."
+        gdb -q -batch -ex "file $BINARY" -ex "source tests/verify_all.py"
+        ;;
+    run)
+        # Khởi động và chạy luôn tới điểm RDO đầu tiên
+        gdb -q -ex "file $BINARY" -ex "hm-start 0 0" -ex "run"
+        ;;
+    *)
+        # Mặc định: Vào thẳng GDB tương tác, đã cấu hình sẵn sàng mọi thứ
+        gdb -q -ex "file $BINARY" -ex "hm-start 0 0"
+        ;;
+esac
