@@ -1,85 +1,71 @@
-# HM-Debugger v2.0 — Bộ công cụ gỡ lỗi trực quan bộ mã hóa HEVC (HM-18.0)
+# HM-Debugger v2.0 — Gỡ lỗi trực quan bộ mã hóa HEVC (HM-18.0)
 
-Công cụ hỗ trợ phân tích, bóc tách cấu trúc dữ liệu và trực quan hóa quy trình nén video chuẩn H.265/HEVC trên phần mềm tham chiếu HM (HEVC Test Model 18.0).
+Extension GDB (Python) để quan sát cấu trúc dữ liệu và quyết định RDO bên trong bộ mã hóa tham chiếu HM-18.0, không sửa mã nguồn C++.
 
 - **Tác giả:** Nguyễn Văn Hội (`hijoouzc`)
 
----
+## 1. Yêu cầu
 
-## 1. Tính năng chính
+- Linux x86_64, GDB có hỗ trợ Python 3.
+- Binary Debug `TAppEncoderStaticd` trong `HM-master/bin/` hoặc `HEVC_reference_software/bin/` (script `./hm` tự chọn).
+- Fixture có sẵn: `workspace/configs/encoder_pilot_ctu64.cfg`, `workspace/inputs/sample_64x64_1frame.yuv`.
 
-1. **Điều hướng luồng nén (Pipeline Tour & Intra Deep Micro-Tour)**:
-   - `hs` (hoặc `hm-tour`): Bước tuần tự qua 7 chặng mã hóa CTU cốt lõi trong `TEncCu`.
-   - `hs intra`: Đào sâu vi mô qua 8 bước chi tiết bên trong hàm `TEncCu::xCheckRDCostIntra` (Dự đoán Luma, Biến đổi DCT/DST, Lượng tử hóa, Tái tạo, Dự đoán Chroma, CABAC Entropy, RD Cost, và So sánh Best Mode).
-   - `hs back`: Tự động tua ngược (rewind) trạng thái tiến trình về bước trước đó.
-   - `hs <1..8>`: Nhảy trực tiếp tới bất kỳ bước nào trong luồng.
-   - Hiển thị trực tiếp 5 dòng mã nguồn C++ thực tế kèm con trỏ `➔` chỉ đúng dòng đang chạy.
+## 2. Khởi động nhanh
 
-2. **Duyệt cây biến đa tầng (Variable & Struct Inspector - `hv`)**:
-   - Giao diện TUI tương tác (phím `↑`/`↓`, `Enter` để đào sâu, `Esc` để quay lại).
-   - Tự động phân loại `Core HEVC Objects` (`rpcTempCU`, `rpcBestCU`, `pCtu`) và biến cục bộ.
-   - Bóc tách mảng 1D, mảng phân vùng Quadtree và mảng điểm ảnh YUV đa thành phần.
+```bash
+./hm          # Mở GDB, đã nạp extension và chạy hm-start 0 0
+./hm run      # Như trên, chạy luôn tới điểm RDO đầu tiên
+./hm test     # Chạy kịch bản tests/verify_all.py
+```
 
-3. **Trực quan hóa ma trận điểm ảnh (Pixel Matrix - `hp`)**:
-   - `hp orig`: Xem ma trận pixel gốc kênh Luma Y.
-   - `hp orig u` / `hp orig v`: Xem ma trận pixel gốc kênh màu Chroma U/V.
-   - `hp pred` / `hp resi` / `hp reco`: Xem ma trận pixel dự đoán, phần dư sai số và ảnh tái tạo sau nén.
+Quy trình gợi ý trong `(gdb)`:
 
-4. **Bản đồ phân vùng CTU (Topology Grid - `hg`)**:
-   - Chiếu ma trận $16 \times 16$ SCU ($4 \times 4$ pixel) của khối CTU $64 \times 64$.
-   - Hiển thị độ sâu phân chia Quadtree (`depth`), hướng nội suy (`intra`), kích thước phân vùng (`partsize`), hoặc chế độ (`predmode`).
+1. `hs intra` rồi nhấn `Enter` liên tục để đi qua các bước bên trong `xCheckRDCostIntra`.
+2. `hs back` hoặc `hs <n>` để lùi / nhảy bước.
+3. `hp orig 16`, `hp reco 16` để xem ma trận điểm ảnh.
+4. `hv` để duyệt cây biến; `menu` (hoặc `h`) để mở bảng lệnh.
 
-5. **So sánh ứng viên RDO (Auto-Diff Decision - `hd`)**:
-   - Bảng so sánh trực quan giữa ứng viên thử nghiệm (`Temp`) và cấu hình tối ưu (`Best`) theo các chỉ số: RD Cost, Bits, Distortion, QP, và Mode.
+## 3. Danh mục lệnh
 
-6. **Bảng lệnh nhanh (Command Palette - `menu` hoặc `h`)**:
-   - Tìm kiếm và kích hoạt nhanh mọi lệnh bằng mũi tên và phím tắt chuẩn.
+| Lệnh | Alias | Cú pháp | Chức năng |
+| :--- | :---: | :--- | :--- |
+| `hm-start` | — | `hm-start [ctu=0] [poc=0]` | Khởi tạo phiên, đặt breakpoint theo CTU/POC mục tiêu. |
+| `hm-tour` | `hs` | `hs [intra\|macro\|back\|reset\|menu\|<n>]` | Đi tuần tự qua 7 mốc CTU hoặc 8 bước Intra. |
+| `hv` | `hm-var` | `hv [var_name]` | Duyệt cây biến tương tác (TUI). |
+| `hm-next-rd` | `hn` | `hn` | Tới ứng viên RDO kế tiếp tại `xCheckBestMode`, in bảng diff. |
+| `hm-inspect` | `hi` | `hi [expr] [depth] [max_items]` | In biến theo ngữ cảnh hàm hoặc duyệt một struct. |
+| `hm-diff-cu` | `hd` | `hd` | So sánh `rpcTempCU` và `rpcBestCU`. |
+| `hm-print-grid` | `hg` | `hg [depth\|intra\|partsize\|predmode]` | Lưới 16×16 SCU của CTU. |
+| `hm-print-array` | `ha` | `ha <depth\|partsize\|intra\|predmode\|cbf\|skip>` | Mảng 1D của CU hiện tại. |
+| `hm-print-pixels` | `hp` | `hp [pred\|orig\|resi\|reco] [y\|u\|v] [max_size=16]` | Ma trận điểm ảnh. |
+| `hm-trace` | `ht` | `ht <intra\|inter\|transform\|split\|all\|off>` | Bật/tắt breakpoint theo phân hệ. |
+| `hm-where` | `hw` | `hw` | Vị trí hiện tại trong cây gọi hàm HM. |
+| `hm-menu` | — | `hm-menu [intra]` | Danh sách mốc Macro hoặc Intra. |
+| `menu` | `h` | `menu` | Bảng lệnh (Command Palette). |
+| `hm-status` | — | `hm-status` | Trạng thái phiên hiện tại. |
+| `hm-help` | — | `hm-help` | Trợ giúp nhanh. |
 
----
+Nguồn chính xác của danh sách này: `gdb_scripts/commands/__init__.py`.
 
-## 2. Cấu trúc dự án
+## 4. Cấu trúc thư mục
 
 ```text
-hm-debugger/
-├── README.md                 # Tài liệu hướng dẫn sử dụng
-├── Makefile                  # Tự động hóa build, test và run
-├── hm                        # Script khởi chạy 1 chạm cho GDB
-├── .gdbinit                  # Cấu hình nạp tự động extension Python
-├── .gitignore                # Loại trừ file nhị phân và video nặng
-├── workspace/configs/
-│   └── encoder_pilot_ctu64.cfg  # Cấu hình mẫu CTU 64x64
-├── gdb_scripts/              # Mã nguồn Python HM-Debugger
-│   ├── entry.py              # Điểm khởi động chính
-│   ├── adapters/             # Bộ chuyển đổi ngữ nghĩa C++ -> Python (TComDataCU, TComYuv)
-│   ├── commands/             # Lệnh mở rộng GDB (hs, hv, hp, hg, hd, hi, menu,...)
-│   ├── core/                 # Phân tích call stack, frame, context và RDO evaluator
-│   ├── trace/                # Quản lý breakpoint động và luồng PipelineTour
-│   ├── ui/                   # ANSI renderers, picker TUI, màu sắc
-│   └── utils/                # Bảng tra cứu chuẩn HEVC ITU-T H.265
-└── tests/                    # Bộ kiểm thử tự động 13/13 tiêu chí
-    └── verify_all.py
+Video_Compression/
+├── hm, Makefile, .gdbinit    # Khởi chạy GDB
+├── gdb_scripts/
+│   ├── entry.py              # Điểm nạp extension
+│   ├── adapters/             # Đọc TComDataCU, TComYuv
+│   ├── commands/             # Các lệnh GDB
+│   ├── core/                 # Context, call stack, RDO
+│   ├── trace/                # Breakpoint động, PipelineTour
+│   ├── ui/                   # Renderer ANSI, TUI picker
+│   └── utils/                # Bảng tra HEVC
+├── workspace/                # configs/, inputs/, outputs/
+├── tests/verify_all.py
+├── docs/                     # Tài liệu tham chiếu (xem docs/README.md)
+├── HEVC_reference_software/  # HM-18.0 + Web Analyzer (README riêng)
+└── HM-master/                # HM-18.0 gốc + tài liệu TComPicSym
 ```
 
----
-
-## 3. Hướng dẫn sử dụng
-
-### 3.1. Khởi động nhanh
-```bash
-# Khởi động môi trường GDB tương tác
-./hm
-
-# Hoặc chạy kiểm tra toàn bộ 13 bài test tự động
-./hm test
-```
-
-### 3.2. Quy trình gỡ lỗi khuyến nghị
-1. Tại dấu nhắc `(gdb)`, gõ:
-   ```gdb
-   (gdb) hs intra
-   ```
-2. Nhấn **`ENTER`** liên tục để bước qua 8 chặng vi mô trong hàm nén Intra.
-3. Nếu muốn lùi lại bước trước: gõ **`hs back`** hoặc **`hs 2`**.
-4. Muốn xem ảnh pixel thực tế: gõ **`hp orig 16`** hoặc **`hp reco 16`**.
-5. Muốn duyệt cây biến: gõ **`hv`**.
-6. Muốn xem bảng lệnh trợ giúp: gõ **`menu`** (hoặc **`h`**).
+> [!NOTE]
+> `tests/verify_all.py` hiện chỉ gọi lần lượt các lệnh và in `PASSED`, chưa có assertion. Kết quả chỉ cho biết lệnh chạy không lỗi.
